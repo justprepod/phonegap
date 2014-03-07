@@ -3,27 +3,176 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1">
+
         <link rel="stylesheet" href="js/jquery/jquery.mobile-1.4.1.min.css">
         <script src="js/jquery/jquery-2.1.0.min.js"></script> 
         <script src="js/jquery/jquery.mobile-1.4.1.min.js"></script>
+        <script src="js/sprintf.min.js"></script>
     </head>
     <body onload="onload()">
         <div data-role="page">
-            <div data-role="header" id="header">
-                <h1>header</h1>
+            <div data-role="header" data-position="fixed">
+                <h1 id="header">header</h1>
             </div>
             <div data-role="content">
-               <p>test-content2</p>
+
+                <form id="captureform" data-ajax="false" enctype="multipart/form-data" action="http://helios/adddevice.php" method="post">
+                    <input type="file" accept="image/*;capture=camera" id="filename" name="qr">
+                    <input type="hidden" name="token" value="" id="formtoken">
+                </form>
+
+                <form id="unit_form" class="fmUnit"> 
+                <ul data-role="listview" data-split-icon="gear" class="ui-listview" id="socketlist">
+              </ul>
+            </form>
             </div>
-            <div data-role="footer">
-                <h1>footer</h1>
+            <div data-role="footer" data-position="fixed">
+                <div id="logout">logout</div>
             </div>
         </div>
     </body>
 
     <script type="text/javascript">
+
+
+$('#logout').click(function(e) {  
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+ 	window.location = "login.html";
+});
+
+
+$( "#filename" ).change(function() {
+    $("#captureform").submit();
+});
+
 function onload() {
+    
+    try {
+        var tmp = 'localStorage' in window && window['localStorage'] !== null;
+    } catch (e) {
+        alert('failed to init localstorage')
+        return false;
+    }
+
+    var user = localStorage.getItem('user');
+    if (user == null)
+    {        
+        window.location = "login.html";
+    }
+    else
+    {
+        //document.getElementById('header').innerHTML = 'Welcome ' + user;
+        $("#header").html('Welcome ' + user);
+        $("#formtoken").val(localStorage.getItem('token'));
+
+        //var tmp = $("#formtoken").val();
+        //alert(tmp);
+        refreshSockets();        
+    }
+
 
 }
+
+var refreshSockets = function()
+{
+        var token = localStorage.getItem('token');
+        //alert(token);
+        $.getJSON("http://helios/getstate.php?token="+token, function(data){
+            $('#socketlist').empty();
+
+            //alert('done');
+
+            var html = "";
+
+            //alert(data);
+            //alert(JSON.stringify(data));
+
+
+            $.each(data["units"],function(unitNumber,unit){
+//                alert('unit');
+
+                html += '<li data-role="list-divider" role="heading"><a href="#">'+unit["name"]+'</a></li>';
+
+                $.each(unit["sockets"], function(socketNumber, socket){
+//                    alert('socket');
+                    
+                    var onChecked = socket["required_state"] == 1 ? 'selected=""' : '';
+                    var offChecked = socket["required_state"] == 0 ? 'selected=""' : '';
+
+                    var onoffstate = socket["reported_state"] == 1 ? 'on' : 'off';
+
+//                    alert (onChecked + offChecked);
+
+                    html += sprintf('<li>\
+                    <a href="#">%(name)s\
+                    <select class="cSocketSwitch" data-role="flipswitch" name="%(mac)s" id="flip-checkbox-%(mac)s"> \
+                    <option '+offChecked+'>off</option> \
+                    <option '+onChecked+'>on</option> \
+                    </select>\
+                    <img src="images/lightbulb'+onoffstate+'.png"> \
+                    </a> \
+                    <a href="#"></a> \
+                    </li> \
+                    ',socket);
+
+                    //var tmp = sprintf('%(mac)s ; %(mac)s',socket);
+                    
+                    //alert(tmp);
+                    //$('#content').append(html);
+                });
+            });
+
+            //alert(html);
+            $('#socketlist').append(html).listview('refresh');
+
+            $('select').slider();
+
+            setTimeout(refreshSockets, 5000);
+
+        }).fail(function(){
+            window.location = "login.html";
+        });
+        //alert("fin");
+};
+
+$('#socketlist').on('change', '.cSocketSwitch', function() {
+
+        //alert('go');
+        var frm = $('#unit_form');
+
+        var obj = frm.serializeArray();
+
+        obj.forEach(function(elem){
+            elem.mac = elem.name;
+            delete elem.name;
+            elem.required_state = elem.value;
+            elem.required_state = elem.required_state == "on" ? "1" : "0";
+            delete elem.value;
+        });
+
+
+        var json = JSON.stringify(obj);
+
+        //alert(json);
+        var token = localStorage.getItem('token');
+
+        $.ajax({
+           type: "POST",
+           url: "http://helios/applystatus.php?token="+token,
+           dataType: 'json',
+           data: json,
+           success: function(data)
+           {
+              //alert(data["count"]);
+           },
+           error: function(request, status, error)
+           {
+                window.location = "login.html";
+                //alert('ERR'+request.responseText); 
+           }
+        });     
+});
+
     </script>
 </html>
